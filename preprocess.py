@@ -1,65 +1,62 @@
-import argparse
-import pandas as pd
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
-from sklearn.model_selection import train_test_split
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import logging
+import argparse  # Import argparse for command-line argument parsing
+import pandas as pd  # Import pandas for data manipulation
+import numpy as np  # Import numpy for numerical operations
+import torch  # Import PyTorch for tensor operations
+from torch.utils.data import DataLoader  # DataLoader class for loading data
+from sklearn.model_selection import train_test_split  # Function to split datasets
+from transformers import AutoTokenizer  # Import AutoTokenizer for tokenizing text data
+import logging  # Import logging to log data and debugging information
 
-# Define a custom Dataset class to manage tokenized data for PyTorch model training
+# Custom dataset class for handling tokenized data
 class MakeTorchData(torch.utils.data.Dataset):
     def __init__(self, encodings, labels):
-        self.encodings = encodings  # Store the encoded texts
+        self.encodings = encodings  # Store the encoded text data
         self.labels = labels.astype(np.float32)  # Convert labels to float32 for compatibility with PyTorch
 
     def __getitem__(self, idx):
-        # Return a single tokenized input and its label as a tensor
+        # Retrieve a single item from the dataset by index
         item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item['labels'] = torch.tensor(self.labels[idx]).long()  # Convert labels to long tensor for classification
+        item['labels'] = torch.tensor(self.labels[idx]).long()  # Ensure labels are long type for classification
         return item
 
     def __len__(self):
-        # Return the length of the dataset
+        # Return the total size of the dataset
         return len(self.labels)
 
-# Function to load data from a CSV file
+# Function to load data from a specified CSV file
 def load_data(input_path):
-    df = pd.read_csv(input_path)  # Load data into DataFrame
-    X = df["full_text"]  # Extract column with text data
-    y = df["holistic_essay_score"]  # Extract column with essay scores
+    df = pd.read_csv(input_path)  # Load the CSV file into a DataFrame
+    X = df["full_text"]  # Extract the text column for processing
+    y = df["holistic_essay_score"]  # Extract the essay score column for labels
     return X, y
 
-# Function to prepare datasets for training and validation
+# Function to prepare training and validation datasets
 def prepare_datasets(X, y, tokenizer, test_size=0.2, random_state=42, max_length=512):
-    y_binary = (y >= 4).astype(int)  # Convert scores to binary labels, with 4 as the cut-off for persuasiveness
+    y_binary = (y >= 4).astype(int)  # Convert essay scores to binary labels
     X_train, X_test, y_train, y_test = train_test_split(X, y_binary, test_size=test_size, random_state=random_state)  # Split data
-
     # Tokenize the training data
     train_encodings = tokenizer(X_train.tolist(), truncation=True, padding=True, max_length=max_length, return_tensors='pt')
     # Tokenize the testing data
     test_encodings = tokenizer(X_test.tolist(), truncation=True, padding=True, max_length=max_length, return_tensors='pt')
-    
-    # Create dataset objects for training and validation
-    train_dataset = MakeTorchData(train_encodings, y_train.ravel())
-    valid_dataset = MakeTorchData(test_encodings, y_test.ravel())
+    train_dataset = MakeTorchData(train_encodings, y_train.ravel())  # Wrap training data in custom Dataset class
+    valid_dataset = MakeTorchData(test_encodings, y_test.ravel())  # Wrap validation data in custom Dataset class
     return train_dataset, valid_dataset
 
-# Main function to setup and run the data preparation and model loading
-def main(input_path, model_name="distilbert-base-uncased"):
-    # Load data
-    X, y = load_data(input_path)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)  # Initialize tokenizer
-    train_dataset, valid_dataset = prepare_datasets(X, y, tokenizer)  # Prepare datasets
+# Function to save the prepared datasets to disk
+def save_datasets(train_dataset, valid_dataset, train_path, valid_path):
+    torch.save(train_dataset, train_path)  # Save the training dataset using PyTorch's save function
+    torch.save(valid_dataset, valid_path)  # Save the validation dataset using PyTorch's save function
 
-    # Load a pre-trained sequence classification model
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2, id2label={0: "NEGATIVE", 1: "POSITIVE"}, label2id={"NEGATIVE": 0, "POSITIVE": 1})
-    print("Setup complete, model loaded and datasets prepared.")
+# Main function to execute preprocessing
+def main(input_path, model_name="distilbert-base-uncased", train_path='train_dataset.pt', valid_path='valid_dataset.pt'):
+    X, y = load_data(input_path)  # Load data from the CSV file
+    tokenizer = AutoTokenizer.from_pretrained(model_name)  # Load tokenizer from Hugging Face's transformers
+    train_dataset, valid_dataset = prepare_datasets(X, y, tokenizer)  # Prepare datasets
+    save_datasets(train_dataset, valid_dataset, train_path, valid_path)  # Save datasets to disk
+    print(f"Datasets prepared and saved to {train_path} and {valid_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process and tokenize persuasive essay data')
-    parser.add_argument('input_path', type=str, help='Path to input CSV file')  # Command line argument for input file path
-    args = parser.parse_args()
-    
-    main(args.input_path)  # Run main function with the provided input path
-    # Run it with this command: python preprocess.py ./persuasive_essays.csv
+    parser.add_argument('input_path', type=str, help='Path to input CSV file')  # Define command-line argument for input file path
+    args = parser.parse_args()  # Parse command-line arguments
+    main(args.input_path)  # Execute the main function with the provided input path

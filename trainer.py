@@ -31,13 +31,15 @@ def compute_metrics(eval_pred):
 # Callback for saving outputs during training
 class SaveOutputCallback(TrainerCallback):
     def __init__(self, output_dir):
+        super().__init__()
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def on_epoch_end(self, args, state, control, **kwargs):
-        output_file = os.path.join(self.output_dir, f'epoch_{state.epoch}.txt')
-        with open(output_file, 'w') as f:
-            f.write(f'Logs saved for epoch {state.epoch}')
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        output_file = os.path.join(self.output_dir, f'logs_epoch_{state.epoch}.txt')
+        with open(output_file, 'a') as f:
+            for key, value in logs.items():
+                f.write(f"{key}: {value}\n")
 
 def main(train_path, valid_path, model_save_path):
     # Load data

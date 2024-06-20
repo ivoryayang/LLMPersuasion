@@ -62,3 +62,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     main(args.input_path)  # Run main function with the provided input path
+    # Run it with this command: python preprocess.py ./persuasive_essays.csv

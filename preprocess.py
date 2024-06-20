@@ -1,27 +1,8 @@
-import argparse  # Import argparse for command-line argument parsing
-import pandas as pd  # Import pandas for data manipulation
-import numpy as np  # Import numpy for numerical operations
-import torch  # Import PyTorch for tensor operations
 from torch.utils.data import DataLoader  # DataLoader class for loading data
 from sklearn.model_selection import train_test_split  # Function to split datasets
 from transformers import AutoTokenizer  # Import AutoTokenizer for tokenizing text data
 import logging  # Import logging to log data and debugging information
-
-# Custom dataset class for handling tokenized data
-class MakeTorchData(torch.utils.data.Dataset):
-    def __init__(self, encodings, labels):
-        self.encodings = encodings  # Store the encoded text data
-        self.labels = labels.astype(np.float32)  # Convert labels to float32 for compatibility with PyTorch
-
-    def __getitem__(self, idx):
-        # Retrieve a single item from the dataset by index
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item['labels'] = torch.tensor(self.labels[idx]).long()  # Ensure labels are long type for classification
-        return item
-
-    def __len__(self):
-        # Return the total size of the dataset
-        return len(self.labels)
+from data_handling import MakeTorchData
 
 # Function to load data from a specified CSV file
 def load_data(input_path):

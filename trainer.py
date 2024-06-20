@@ -1,113 +1,73 @@
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
-import gc
-import random
-import datasets
-from transformers.file_utils import is_tf_available, is_torch_available
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments, TrainerCallback
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score, mean_squared_error, mean_absolute_error
-import pandas as pd
 import numpy as np
-from transformers import AutoModel, DataCollatorWithPadding
-import evaluate
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from transformers import AutoModelForSequenceClassification, Trainer, TrainingArguments, TrainerCallback
+from torch.utils.data import DataLoader
 import os
-import logging
+import argparse
 
-def compute_metrics_for_classification(eval_pred):
+# Load the datasets from .pt files
+def load_datasets(train_path, valid_path):
+    train_dataset = torch.load(train_path)
+    valid_dataset = torch.load(valid_path)
+    return train_dataset, valid_dataset
+
+# Compute various classification metrics
+def compute_metrics(eval_pred):
     logits, labels = eval_pred
-#     print(labels)
     predictions = np.argmax(logits, axis=1)
-    labels = labels.flatten()
+    return {
+        'accuracy': (predictions == labels).mean(),
+        'f1_macro': f1_score(labels, predictions, average='macro'),
+        'f1_micro': f1_score(labels, predictions, average='micro'),
+        'precision': precision_score(labels, predictions, average='macro'),
+        'recall': recall_score(labels, predictions, average='macro')
+    }
 
-    # Convert logits and labels to PyTorch tensors
-    logits_tensor = torch.from_numpy(logits)
-    labels_tensor = torch.from_numpy(labels)
-
-    # Calculate cross-entropy loss
-    loss_fn = torch.nn.CrossEntropyLoss()
-    loss = loss_fn(logits_tensor, labels_tensor)
-
-    # Calculate additional classification metrics
-    accuracy = accuracy_score(labels, predictions)
-    precision = precision_score(labels, predictions)
-    recall = recall_score(labels, predictions)
-#     f1 = f1_score(labels, predictions)
-
-    f1_macro = f1_score(labels, predictions,average='macro')
-    f1_micro = f1_score(labels, predictions,average='micro')
-
-
-    return {"loss": loss.item(),
-            "accuracy": accuracy,
-            "precision": precision,
-            "recall": recall,
-            "f1_macro": f1_macro,
-            "f1_micro": f1_micro}
-
-
+# Callback for saving outputs during training
 class SaveOutputCallback(TrainerCallback):
     def __init__(self, output_dir):
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
+
     def on_epoch_end(self, args, state, control, **kwargs):
-        # Extract the current epoch from the state
-        epoch = state.epoch
-        if state.log_history:
-            # Extract output from Trainer state
-            output = state.log_history[-1]  # Get the log history for the last step of the epoch
-            # Save output to a text file
-            output_file = os.path.join(self.output_dir, f'epoch_{epoch}_output.txt')
-            with open(output_file, 'w') as f:
-                f.write(str(output))
-            print(f"Logs saved for epoch {epoch}")
-        else:
-            print(f"No logs recorded for epoch {epoch}")
-# Define your TrainerCallback
-save_output_callback = SaveOutputCallback('./eb5/output_logs')
+        # Save model output logs at each epoch
+        output_file = os.path.join(self.output_dir, f'epoch_{state.epoch}.txt')
+        with open(output_file, 'w') as f:
+            f.write(f'Logs saved for epoch {state.epoch}')
 
-num_epochs = 20
+def main(train_path, valid_path, model_save_path):
+    # Load data
+    train_dataset, valid_dataset = load_datasets(train_path, valid_path)
 
-# Update training_args to include the new callback
-training_args = TrainingArguments(
-        output_dir='./eb5',
-    num_train_epochs=num_epochs,
-    per_device_train_batch_size=33, #Reducing batch size generalizes better
-    per_device_eval_batch_size=33,
-    weight_decay=1e-2, #0.99 increasing weight_decay generalizes better
-    learning_rate=2e-5,  #Reducing learning rate also generalizes better
-    logging_dir='./logs',
-    save_total_limit=10,
-    load_best_model_at_end=True,
-    metric_for_best_model='accuracy',
-    evaluation_strategy="epoch",  # Ensure evaluation is done at the end of each epoch
-    save_strategy="epoch",        # Ensure model checkpoints are saved at the end of each epoch
-    logging_strategy="epoch",     # Ensure logging is done at the end of each epoch
-#     evaluation_strategy="steps",  # Ensure evaluation is done at the end of each epoch
-# #     save_strategy="epoch",        # Ensure model checkpoints are saved at the end of each epoch
-#     eval_steps=1,
-#     logging_steps=1,
-#     logging_strategy="steps",     # Ensure logging is done at the end of each epoch
-    report_to="none",
-    push_to_hub=False,  # Disable uploading results to the Hub
-)
+    # Set training arguments
+    training_args = TrainingArguments(
+        output_dir=model_save_path,
+        num_train_epochs=3,
+        per_device_train_batch_size=16,
+        warmup_steps=500,
+        weight_decay=0.01,
+        evaluation_strategy='epoch',
+        save_strategy='epoch'
+    )
 
-# Call the Trainer
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_dataset,
-    eval_dataset=valid_dataset,
-    compute_metrics=compute_metrics_for_classification,
-    callbacks=[save_output_callback]  # Add the callback to the Trainer
-)
-# Train the model 
-trainer.train()
-# Call the summary
-trainer.evaluate()
+    # Initialize and run trainer
+    model = AutoModelForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=2)
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=valid_dataset,
+        compute_metrics=compute_metrics,
+        callbacks=[SaveOutputCallback('./output_logs')]
+    )
+    trainer.train()
+    trainer.evaluate()
 
-# Set device
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model.to(device)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train a model on processed data")
+    parser.add_argument('train_path', type=str, help='Path to the training data file')
+    parser.add_argument('valid_path', type=str, help='Path to the validation data file')
+    parser.add_argument('model_save_path', type=str, help='Directory to save the trained model')
+    args = parser.parse_args()
+    
+    main(args.train_path, args.valid_path, args.model_save_path)

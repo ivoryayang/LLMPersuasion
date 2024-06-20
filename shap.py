@@ -1,3 +1,29 @@
+import torch
+import torch.nn as nn
+import gc
+import random
+import datasets
+from transformers.file_utils import is_tf_available, is_torch_available
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments, TrainerCallback
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score, mean_squared_error, mean_absolute_error
+import pandas as pd
+import numpy as np
+from transformers import AutoModel, DataCollatorWithPadding
+import evaluate
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import os
+import logging
+from torch.utils.data import DataLoader
+from lime.lime_text import LimeTextExplainer
+from LIME_for_text import LIMExplainer
+logging.basicConfig(format='%(asctime)s - %(message)s', datefmt='%d-%b-%y %H:%M:%S')
+logging.getLogger().setLevel(logging.INFO)
+import shap
+from SHAP_for_text import SHAPexplainer
+logging.getLogger("shap").setLevel(logging.WARNING)
+shap.initjs()
+
 # SHAP interpretation
 class BertForSequenceClassificationWrapper:
     def __init__(self, model, tokenizer, device):

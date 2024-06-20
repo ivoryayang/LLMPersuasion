@@ -1,14 +1,19 @@
 import torch
 import numpy as np
 from transformers import AutoModelForSequenceClassification, Trainer, TrainingArguments, TrainerCallback
-from torch.utils.data import DataLoader
 import os
 import argparse
+from sklearn.metrics import f1_score, precision_score, recall_score
+from data_handling import MakeTorchData
 
 # Load the datasets from .pt files
 def load_datasets(train_path, valid_path):
-    train_dataset = torch.load(train_path)
-    valid_dataset = torch.load(valid_path)
+    try:
+        train_dataset = torch.load(train_path)
+        valid_dataset = torch.load(valid_path)
+    except Exception as e:
+        print(f"Error loading datasets: {e}")
+        raise
     return train_dataset, valid_dataset
 
 # Compute various classification metrics
@@ -30,7 +35,6 @@ class SaveOutputCallback(TrainerCallback):
         os.makedirs(self.output_dir, exist_ok=True)
 
     def on_epoch_end(self, args, state, control, **kwargs):
-        # Save model output logs at each epoch
         output_file = os.path.join(self.output_dir, f'epoch_{state.epoch}.txt')
         with open(output_file, 'w') as f:
             f.write(f'Logs saved for epoch {state.epoch}')

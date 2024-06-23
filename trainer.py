@@ -4,7 +4,7 @@ from transformers import AutoModelForSequenceClassification, Trainer, TrainingAr
 import os
 import argparse
 from sklearn.metrics import f1_score, precision_score, recall_score
-from data_handling import MakeTorchData
+from utils import PersuasionDataset
 
 # Load the datasets from .pt files
 def load_datasets(train_path, valid_path):
@@ -41,13 +41,20 @@ class SaveOutputCallback(TrainerCallback):
             for key, value in logs.items():
                 f.write(f"{key}: {value}\n")
 
-def main(train_path, valid_path, model_save_path):
-    # Load data
-    train_dataset, valid_dataset = load_datasets(train_path, valid_path)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train a model on processed data")
+    parser.add_argument('-train_path', type=str, help='Path to the training data file')
+    parser.add_argument('-validation_path', type=str, help='Path to the validation data file')
+    parser.add_argument('-base_model_name', type=str, default='distilbert-base-uncased', help='base model to be trained')
+    parser.add_argument('-model_save_path', type=str, help='Directory to save the trained model')
+
+    args = parser.parse_args()
+
+    train_dataset, valid_dataset = load_datasets(args.train_path, args.validation_path)
 
     # Set training arguments
     training_args = TrainingArguments(
-        output_dir=model_save_path,
+        output_dir=args.model_save_path,
         num_train_epochs=3,
         per_device_train_batch_size=16,
         warmup_steps=500,
@@ -57,7 +64,7 @@ def main(train_path, valid_path, model_save_path):
     )
 
     # Initialize and run trainer
-    model = AutoModelForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=2)
+    model = AutoModelForSequenceClassification.from_pretrained(args.base_model_name, num_labels=2)
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -68,12 +75,3 @@ def main(train_path, valid_path, model_save_path):
     )
     trainer.train()
     trainer.evaluate()
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a model on processed data")
-    parser.add_argument('train_path', type=str, help='Path to the training data file')
-    parser.add_argument('valid_path', type=str, help='Path to the validation data file')
-    parser.add_argument('model_save_path', type=str, help='Directory to save the trained model')
-    args = parser.parse_args()
-    
-    main(args.train_path, args.valid_path, args.model_save_path)
